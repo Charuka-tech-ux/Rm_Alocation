@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Allocation System</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: Arial, sans-serif; padding: 20px; background-color: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { text-align: center; margin-bottom: 20px; color: #333; }
+        .controls { margin-bottom: 20px; display: flex; gap: 10px; justify-content: center; }
+        select, input { padding: 8px; border: 1px solid #ddd; border-radius: 4px; width: 200px; }
+        table { width: 100%; border-collapse: collapse; background: white; margin-bottom: 20px; }
+        th, td { padding: 12px; text-align: left; border: 1px solid #ddd; }
+        th { background-color: #f8f9fa; }
+        input[type="number"], input[type="text"] { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        .buttons { display: flex; gap: 10px; justify-content: center; margin-top: 20px; }
+        button { padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; color: white; font-weight: bold; }
+        .calculate-btn { background-color: #007bff; }
+        .save-btn { background-color: #28a745; }
+        .reset-btn { background-color: #dc3545; }
+        .export-btn { background-color: #17a2b8; }
+        #savedData { margin-top: 30px; background: white; padding: 20px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Stock Allocation System</h1>
+        
+        <div class="controls">
+            <select id="agmSelect">
+                <option value="">Select AGM/DGM</option>
+                <option value="lalin">Mr. Lalin Anthony</option>
+                <option value="shehan">Mr. Shehan Fernando</option>
+                <option value="amila">Mr. Amila Perera</option>
+            </select>
+        </div>
+
+        <table id="allocationTable">
+            <thead>
+                <tr>
+                    <th>Item Code</th>
+                    <th>Name</th>
+                    <th>Sale</th>
+                    <th>Sale Percentage</th>
+                    <th>As at Today In Hand</th>
+                    <th>New Allocation</th>
+                    <th>To Be In Hand</th>
+                    <th>Balance Allocation</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+        </table>
+
+        <div class="buttons">
+            <button class="calculate-btn" onclick="autoCalculate()">Auto Calculate</button>
+            <button class="save-btn" onclick="saveAllocation()">Save</button>
+            <button class="reset-btn" onclick="resetForm()">Reset</button>
+            <button class="export-btn" onclick="exportToExcel()">Export to Excel</button>
+        </div>
+
+        <div id="savedData">
+            <h2>Saved Allocations</h2>
+            <div id="savedAllocations"></div>
+        </div>
+    </div>
+
+    <script>
+        const agmData = {
+            'lalin': ['Asanka Gayan', 'Harshana Kongahage', 'Janaka Ekanayake'],
+            'shehan': ['Asanka Lakmal', 'Chinthaka', 'Rakulan', 'Kirubin'],
+            'amila': ['Mayura Mohotti', 'Miran Kehelpannala', 'Nalinda Sampath']
+        };
+
+        document.getElementById('agmSelect').addEventListener('change', function() {
+            updateTable(this.value);
+        });
+
+        function updateTable(selectedAgm) {
+            const tableBody = document.getElementById('tableBody');
+            tableBody.innerHTML = '';
+
+            if (!selectedAgm) return;
+
+            const subordinates = agmData[selectedAgm];
+            
+            subordinates.forEach((name, index) => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    ${index === 0 ? `<td rowspan="${subordinates.length}"><input type="text" class="item-code" placeholder="Enter Item Code"></td>` : ''}
+                    <td>${name}</td>
+                    <td><input type="number" class="sale" onchange="calculatePercentages()" placeholder="Enter Sale"></td>
+                    <td><input type="number" class="sale-percentage" readonly></td>
+                    <td><input type="number" class="in-hand" onchange="calculateBalances()" placeholder="Enter In Hand"></td>
+                    ${index === 0 ? `<td rowspan="${subordinates.length}"><input type="number" class="new-allocation" onchange="calculateBalances()" placeholder="Enter New Allocation"></td>` : ''}
+                    <td><input type="number" class="to-be-in-hand" readonly></td>
+                    <td><input type="number" class="balance" readonly></td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+
+        function calculatePercentages() {
+            const sales = Array.from(document.getElementsByClassName('sale'))
+                .map(input => parseFloat(input.value) || 0);
+            const totalSale = sales.reduce((a, b) => a + b, 0);
+            
+            if (totalSale > 0) {
+                const percentages = document.getElementsByClassName('sale-percentage');
+                sales.forEach((sale, index) => {
+                    percentages[index].value = ((sale / totalSale) * 100).toFixed(2);
+                });
+            }
+            calculateBalances();
+        }
+
+        function calculateBalances() {
+            const newAllocation = parseFloat(document.querySelector('.new-allocation')?.value) || 0;
+            const inHandInputs = document.getElementsByClassName('in-hand');
+            const toBeInHandInputs = document.getElementsByClassName('to-be-in-hand');
+            const balanceInputs = document.getElementsByClassName('balance');
+            const percentages = document.getElementsByClassName('sale-percentage');
+
+            let totalInHand = Array.from(inHandInputs)
+                .reduce((sum, input) => sum + (parseFloat(input.value) || 0), 0);
+
+            Array.from(inHandInputs).forEach((input, index) => {
+                const inHand = parseFloat(input.value) || 0;
+                const percentage = parseFloat(percentages[index].value) || 0;
+                const toBeInHand = Math.round((totalInHand + newAllocation) * (percentage / 100));
+                const balance = toBeInHand - inHand;
+
+                if (toBeInHand) toBeInHandInputs[index].value = toBeInHand;
+                if (balance) balanceInputs[index].value = balance;
+            });
+        }
+
+        function prepareExcelData() {
+            const itemCode = document.querySelector('.item-code').value;
+            const rows = document.getElementById('tableBody').rows;
+            const data = [];
+
+            // Add headers
+            data.push(['Item Code', 'Name', 'Sale', 'Sale Percentage', 'In Hand', 'New Allocation', 'To Be In Hand', 'Balance']);
+
+            // Add data rows
+            Array.from(rows).forEach(row => {
+                const rowData = [
+                    itemCode,
+                    row.cells[1].textContent,
+                    row.querySelector('.sale').value,
+                    row.querySelector('.sale-percentage').value,
+                    row.querySelector('.in-hand').value,
+                    row.querySelector('.new-allocation')?.value || '',
+                    row.querySelector('.to-be-in-hand').value,
+                    row.querySelector('.balance').value
+                ];
+                data.push(rowData);
+            });
+
+            return data;
+        }
+
+        function exportToExcel() {
+            const itemCode = document.querySelector('.item-code').value;
+            if (!itemCode) {
+                alert('Please enter an Item Code');
+                return;
+            }
+
+            const data = prepareExcelData();
+            const ws = XLSX.utils.aoa_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            
+            // Set column widths
+            ws['!cols'] = [
+                {width: 15}, // Item Code
+                {width: 20}, // Name
+                {width: 15}, // Sale
+                {width: 15}, // Sale Percentage
+                {width: 15}, // In Hand
+                {width: 15}, // New Allocation
+                {width: 15}, // To Be In Hand
+                {width: 15}  // Balance
+            ];
+
+            XLSX.utils.book_append_sheet(wb, ws, 'Stock Allocation');
+            XLSX.writeFile(wb, `Stock_Allocation_${itemCode}_${new Date().toISOString().split('T')[0]}.xlsx`);
+        }
+
+        function saveAllocation() {
+            const itemCode = document.querySelector('.item-code').value;
+            if (!itemCode) {
+                alert('Please enter an Item Code');
+                return;
+            }
+
+            const agmSelect = document.getElementById('agmSelect');
+            const selectedAgm = agmSelect.options[agmSelect.selectedIndex].text;
+            
+            const allocation = {
+                date: new Date().toISOString(),
+                itemCode: itemCode,
+                agm: selectedAgm,
+                data: Array.from(document.getElementById('tableBody').rows).map(row => ({
+                    name: row.cells[1].textContent,
+                    sale: row.querySelector('.sale').value,
+                    salePercentage: row.querySelector('.sale-percentage').value,
+                    inHand: row.querySelector('.in-hand').value,
+                    toBeInHand: row.querySelector('.to-be-in-hand').value,
+                    balance: row.querySelector('.balance').value
+                }))
+            };
+
+            let savedAllocations = JSON.parse(localStorage.getItem('allocations') || '[]');
+            savedAllocations.push(allocation);
+            localStorage.setItem('allocations', JSON.stringify(savedAllocations));
+            
+            displaySavedAllocations();
+            alert('Allocation saved successfully');
+        }
+
+        function displaySavedAllocations() {
+            const savedAllocations = JSON.parse(localStorage.getItem('allocations') || '[]');
+            document.getElementById('savedAllocations').innerHTML = savedAllocations
+                .map((allocation, index) => `
+                    <div style="border: 1px solid #ddd; padding: 10px; margin-bottom: 10px; background: #f9f9f9;">
+                        <p><strong>Date:</strong> ${new Date(allocation.date).toLocaleString()}</p>
+                        <p><strong>Item Code:</strong> ${allocation.itemCode}</p>
+                        <p><strong>AGM/DGM:</strong> ${allocation.agm}</p>
+                        <button onclick="exportSavedAllocation(${index})" style="background: #17a2b8; color: white; padding: 5px 10px; border: none; border-radius: 4px; margin-top: 5px;">Export</button>
+                        <button onclick="deleteSavedAllocation(${index})" style="background: #dc3545; color: white; padding: 5px 10px; border: none; border-radius: 4px; margin-top: 5px; margin-left: 5px;">Delete</button>
+                    </div>
+                `).join('');
+        }
+
+        function exportSavedAllocation(index) {
+            const savedAllocations = JSON.parse(localStorage.getItem('allocations') || '[]');
+            const allocation = savedAllocations[index];
+            
+            const data = [
+                ['Stock Allocation Report'],
+                ['Date:', new Date(allocation.date).toLocaleString()],
+                ['Item Code:', allocation.itemCode],
+                ['AGM/DGM:', allocation.agm],
+                [],
+                ['Name', 'Sale', 'Sale Percentage', 'In Hand', 'To Be In Hand', 'Balance']
+            ];
+
+            allocation.data.forEach(item => {
+                data.push([
+                    item.name,
+                    item.sale,
+                    item.salePercentage,
+                    item.inHand,
+                    item.toBeInHand,
+                    item.balance
+                ]);
+            });
+
+            const ws = XLSX.utils.aoa_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            
+            ws['!cols'] = [
+                {width: 20}, // Name
+                {width: 15}, // Sale
+                {width: 15}, // Sale Percentage
+                {width: 15}, // In Hand
+                {width: 15}, // To Be In Hand
+                {width: 15}  // Balance
+            ];
+
+            XLSX.utils.book_append_sheet(wb, ws, 'Stock Allocation');
+            XLSX.writeFile(wb, `Stock_Allocation_${allocation.itemCode}_${new Date(allocation.date).toISOString().split('T')[0]}.xlsx`);
+        }
+
+        function deleteSavedAllocation(index) {
+            if (confirm('Are you sure you want to delete this allocation?')) {
+                let savedAllocations = JSON.parse(localStorage.getItem('allocations') || '[]');
+                savedAllocations.splice(index, 1);
+                localStorage.setItem('allocations', JSON.stringify(savedAllocations));
+                displaySavedAllocations();
+            }
+        }
+
+        function autoCalculate() {
+            calculatePercentages();
+            calculateBalances();
+        }
+
+        function resetForm() {
+            if (confirm('Are you sure you want to reset the form?')) {
+                document.getElementById('agmSelect').value = '';
+                document.getElementById('tableBody').innerHTML = '';
+            }
+        }
+
+        // Initialize saved allocations display
+        displaySavedAllocations();
+    </script>
+</body>
+</html>
